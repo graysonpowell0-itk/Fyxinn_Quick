@@ -15,6 +15,7 @@ export const issues = sqliteTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
     completedAt: text("completed_at"),
+    latestSubmissionId: text("latest_submission_id"),
   },
   (table) => [
     index("idx_issues_location_updated").on(table.location, table.updatedAt),
@@ -58,6 +59,7 @@ export const accounts = sqliteTable("accounts", {
   pinHash: text("pin_hash").notNull(),
   salt: text("salt").notNull(),
   role: text("role").notNull(),
+  approvalStatus: text("approval_status").notNull().default("approved"),
 });
 export const accountSessions = sqliteTable("account_sessions", {
   token: text("token").primaryKey(),
@@ -70,3 +72,32 @@ export const loginAttempts = sqliteTable("login_attempts", {
   id: text("id").primaryKey(),
   count: integer("count").notNull(),
 });
+
+export const repairSubmissions = sqliteTable(
+  "repair_submissions",
+  {
+    id: text("id").primaryKey(),
+    issueId: text("issue_id")
+      .notNull()
+      .references(() => issues.id),
+    comment: text("comment").notNull(),
+    submittedBy: text("submitted_by").notNull(),
+    submittedAt: text("submitted_at").notNull(),
+    reviewStatus: text("review_status").notNull().default("pending"),
+    reviewNote: text("review_note"),
+    reviewedBy: text("reviewed_by"),
+    reviewedAt: text("reviewed_at"),
+  },
+  (table) => [index("idx_repair_submissions_issue").on(table.issueId)],
+);
+export const repairPhotos = sqliteTable(
+  "repair_photos",
+  {
+    id: text("id").primaryKey(),
+    submissionId: text("submission_id")
+      .notNull()
+      .references(() => repairSubmissions.id),
+    objectKey: text("object_key").notNull(),
+  },
+  (table) => [index("idx_repair_photos_submission").on(table.submissionId)],
+);

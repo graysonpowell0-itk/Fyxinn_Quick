@@ -1,5 +1,7 @@
+import { listIssues } from "../../lib/issues";
+import { imageType } from "../../lib/image";
 import { env } from "cloudflare:workers";
-import { currentAccount, database, sameOrigin } from "../../lib/auth";
+import { approvedAccount, database, sameOrigin } from "../../lib/auth";
 
 const json = (body: unknown, status = 200) =>
   Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -23,77 +25,9 @@ const categories = new Set([
   "Safety",
   "Other",
 ]);
-type Row = {
-  id: string;
-  location: string;
-  location_type: string;
-  category: string;
-  description: string;
-  status: string;
-  reporter_name: string;
-  reporter_phone: string;
-  assignee_name: string | null;
-  created_at: string;
-  updated_at: string;
-  completed_at: string | null;
-};
-async function listIssues(id?: string) {
-  const db = database();
-  const rows = await db
-    .prepare(
-      `SELECT * FROM issues ${id ? "WHERE id = ?" : ""} ORDER BY updated_at DESC, id DESC`,
-    )
-    .bind(...(id ? [id] : []))
-    .all<Row>();
-  const [photos, updates] = await Promise.all([
-    db
-      .prepare(
-        `SELECT issue_id, object_key FROM issue_photos ${id ? "WHERE issue_id = ?" : ""} ORDER BY object_key`,
-      )
-      .bind(...(id ? [id] : []))
-      .all<{ issue_id: string; object_key: string }>(),
-    db
-      .prepare(
-        `SELECT issue_id, status, actor_name, created_at FROM issue_updates ${id ? "WHERE issue_id = ?" : ""} ORDER BY created_at, rowid`,
-      )
-      .bind(...(id ? [id] : []))
-      .all<{
-        issue_id: string;
-        status: string;
-        actor_name: string;
-        created_at: string;
-      }>(),
-  ]);
-  return rows.results.map((row) => ({
-    id: row.id,
-    location: row.location,
-    locationType: row.location_type,
-    category: row.category,
-    description: row.description,
-    status: row.status,
-    reporterName: row.reporter_name,
-    reporterPhone: row.reporter_phone,
-    assigneeName: row.assignee_name,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    completedAt: row.completed_at,
-    photos: photos.results
-      .filter((photo) => photo.issue_id === row.id)
-      .map(
-        (photo) => `/api/photos?key=${encodeURIComponent(photo.object_key)}`,
-      ),
-    updates: updates.results
-      .filter((update) => update.issue_id === row.id)
-      .map((update) => ({
-        status: update.status,
-        actorName: update.actor_name,
-        createdAt: update.created_at,
-      })),
-  }));
-}
 export async function GET(request: Request) {
   try {
-    if (!(await currentAccount(request)))
+    if (!(await approvedAccount(request)))
       return json({ error: "Sign in required." }, 401);
     return json({ issues: await listIssues() });
   } catch (error) {
@@ -101,25 +35,13 @@ export async function GET(request: Request) {
     return json({ error: "Repairs could not be loaded." }, 503);
   }
 }
-async function imageType(photo: File) {
-  const b = new Uint8Array(await photo.slice(0, 12).arrayBuffer());
-  if (b[0] === 255 && b[1] === 216 && b[2] === 255) return "image/jpeg";
-  if ([137, 80, 78, 71, 13, 10, 26, 10].every((v, i) => b[i] === v))
-    return "image/png";
-  if (
-    String.fromCharCode(...b.slice(0, 4)) === "RIFF" &&
-    String.fromCharCode(...b.slice(8, 12)) === "WEBP"
-  )
-    return "image/webp";
-  return null;
-}
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return json({ error: "Forbidden." }, 403);
   const uploaded: string[] = [];
   let committed = false;
   const bucket = env.PHOTOS as R2Bucket;
   try {
-    const account = await currentAccount(request);
+    const account = await approvedAccount(request);
     if (!account) return json({ error: "Sign in required." }, 401);
     if (Number(request.headers.get("Content-Length") ?? 0) > 26000000)
       return json({ error: "Photos are too large." }, 413);
@@ -212,73 +134,132 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   if (!sameOrigin(request)) return json({ error: "Forbidden." }, 403);
   try {
-    const account = await currentAccount(request);
+    const account = await approvedAccount(request);
     if (!account) return json({ error: "Sign in required." }, 401);
-    if (account.role !== "maintenance")
-      return json({ error: "Maintenance access required." }, 403);
-    let body: { id?: string; status?: string; expectedStatus?: string };
+    let body: {
+      id?: string;
+      status?: string;
+      expectedStatus?: string;
+      submissionId?: string;
+      note?: string;
+    };
     try {
       body = await request.json();
     } catch {
       return json({ error: "Invalid update." }, 400);
     }
-    if (
-      !body.id ||
-      !["unaddressed", "in-progress", "completed"].includes(body.status ?? "")
-    )
-      return json({ error: "Invalid update." }, 400);
+    if (!body?.id) return json({ error: "Invalid update." }, 400);
     const db = database();
     const current = await db
-      .prepare("SELECT status FROM issues WHERE id = ?")
+      .prepare("SELECT status, latest_submission_id FROM issues WHERE id = ?")
       .bind(body.id)
-      .first<{ status: string }>();
+      .first<{ status: string; latest_submission_id: string | null }>();
     if (!current) return json({ error: "Issue not found." }, 404);
-    const transitions: Record<string, string> = {
-      unaddressed: "in-progress",
-      "in-progress": "completed",
-      completed: "unaddressed",
-    };
-    if (
-      current.status !== body.expectedStatus ||
-      transitions[current.status] !== body.status
-    )
+    const admin = account.role === "admin";
+    const review = current.status === "awaiting-review";
+    if (review && !admin)
       return json(
-        { error: "This repair changed. Refresh and try again." },
+        { error: "Only the administrator can review a finished repair." },
+        403,
+      );
+    if (!review && !["admin", "maintenance"].includes(account.role))
+      return json({ error: "Maintenance access required." }, 403);
+    const allowed = review
+      ? ["completed", "in-progress"].includes(body.status ?? "")
+      : current.status === "unaddressed"
+        ? body.status === "in-progress"
+        : current.status === "completed" &&
+          admin &&
+          body.status === "unaddressed";
+    if (!allowed || current.status !== body.expectedStatus)
+      return json(
+        { error: "This action is unavailable. Refresh the ticket." },
         409,
       );
+    const note = typeof body.note === "string" ? body.note.trim() : "";
+    if (
+      note.length > 1000 ||
+      (review && body.status === "in-progress" && note.length < 3)
+    )
+      return json({ error: "Explain what needs more work." }, 400);
+    if (
+      review &&
+      (!body.submissionId || body.submissionId !== current.latest_submission_id)
+    )
+      return json(
+        { error: "The repair submission changed. Review it again." },
+        409,
+      );
+    if (review) {
+      const evidence = await db
+        .prepare(
+          "SELECT s.id FROM repair_submissions s WHERE s.id = ? AND s.issue_id = ? AND s.review_status = 'pending' AND length(trim(s.comment)) >= 8 AND (SELECT COUNT(*) FROM repair_photos p WHERE p.submission_id = s.id) = 3",
+        )
+        .bind(body.submissionId, body.id)
+        .first();
+      if (!evidence)
+        return json(
+          {
+            error:
+              "The repair requires a comment and three photos before review.",
+          },
+          409,
+        );
+    }
     const now = new Date().toISOString();
-    const result = await db.batch([
+    const conditions =
+      "id = ? AND status = ? AND COALESCE(latest_submission_id, '') = ?";
+    const match = [body.id, current.status, current.latest_submission_id ?? ""];
+    const statements = [];
+    if (review)
+      statements.push(
+        db
+          .prepare(
+            `UPDATE repair_submissions SET review_status = ?, review_note = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ? AND review_status = 'pending' AND EXISTS (SELECT 1 FROM issues WHERE ${conditions})`,
+          )
+          .bind(
+            body.status === "completed" ? "approved" : "returned",
+            note,
+            account.name,
+            now,
+            body.submissionId,
+            ...match,
+          ),
+      );
+    statements.push(
       db
         .prepare(
-          "INSERT INTO issue_updates (id, issue_id, status, actor_name, note, created_at) SELECT ?, id, ?, ?, '', ? FROM issues WHERE id = ? AND status = ?",
+          `INSERT INTO issue_updates (id, issue_id, status, actor_name, note, created_at) SELECT ?, id, ?, ?, ?, ? FROM issues WHERE ${conditions}`,
         )
         .bind(
           crypto.randomUUID(),
           body.status,
           account.name,
+          note,
           now,
-          body.id,
-          current.status,
+          ...match,
         ),
+    );
+    statements.push(
       db
         .prepare(
-          "UPDATE issues SET status = ?, assignee_name = CASE WHEN ? = 'unaddressed' THEN NULL WHEN ? = 'in-progress' THEN ? ELSE assignee_name END, updated_at = ?, completed_at = CASE WHEN ? = 'completed' THEN ? ELSE NULL END WHERE id = ? AND status = ?",
+          `UPDATE issues SET status = ?, assignee_name = CASE WHEN ? = 'unaddressed' THEN NULL WHEN ? = 'unaddressed' THEN ? ELSE assignee_name END, updated_at = ?, completed_at = CASE WHEN ? = 'completed' THEN ? ELSE NULL END WHERE ${conditions}`,
         )
         .bind(
           body.status,
           body.status,
-          body.status,
+          current.status,
           account.name,
           now,
           body.status,
           now,
-          body.id,
-          current.status,
+          ...match,
         ),
-    ]);
-    if (!result[1].meta.changes)
+    );
+    const result = await db.batch(statements);
+    if (!result.at(-1)?.meta.changes)
       return json(
-        { error: "This repair changed. Refresh and try again." },
+        { error: "This ticket changed. Refresh and try again." },
         409,
       );
     return json({ issue: (await listIssues(body.id))[0] });

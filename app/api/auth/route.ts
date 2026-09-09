@@ -66,25 +66,36 @@ export async function POST(request: Request) {
       const hash = await pinHash(pin, salt);
       const inserted = await db
         .prepare(
-          "INSERT OR IGNORE INTO accounts (id, name, phone, pin_hash, salt, role) VALUES (?, ?, ?, ?, ?, ?)",
+          "INSERT OR IGNORE INTO accounts (id, name, phone, pin_hash, salt, role, approval_status) VALUES (?, ?, ?, ?, ?, ?, 'pending')",
         )
         .bind(id, name, phone, hash, salt, body.role)
         .run();
       if (!inserted.meta.changes) return json({ error: "duplicate" }, 409);
-      account = { id, name, phone, role: body.role as Account["role"] };
+      account = {
+        id,
+        name,
+        phone,
+        role: body.role as Account["role"],
+        approvalStatus: "pending",
+      };
     } else if (body.action === "login") {
       const row = await db
-        .prepare("SELECT * FROM accounts WHERE phone = ?")
+        .prepare(
+          "SELECT *, approval_status AS approvalStatus FROM accounts WHERE phone = ?",
+        )
         .bind(phone)
         .first<Account & { pin_hash: string; salt: string }>();
       const hash = await pinHash(pin, row?.salt ?? "unknown-account");
       if (!row || !equalHash(row.pin_hash, hash))
         return json({ error: "credentials" }, 401);
+      if (row.approvalStatus === "removed")
+        return json({ error: "removed" }, 403);
       account = {
         id: row.id,
         name: row.name,
         phone: row.phone,
         role: row.role,
+        approvalStatus: row.approvalStatus,
       };
     } else return json({ error: "invalid" }, 400);
     const token =

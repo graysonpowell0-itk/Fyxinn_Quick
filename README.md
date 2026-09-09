@@ -6,7 +6,10 @@ Live site: https://fyxinn-quick.graysonpowell0.chatgpt.site/
 
 ## Features
 
-- Persistent phone/PIN accounts and staff/maintenance roles.
+- Persistent phone/PIN accounts with owner approval and immediate access removal.
+- Owner administrator sign-in through the verified ChatGPT identity.
+- Maintenance submits exactly three repair photos and a repair comment.
+- Finished work waits for the administrator to approve completion or return it with feedback.
 - Reports with exactly three photos, using the camera or existing files.
 - Live camera preview, capture, retake, camera switching, and device-camera fallback.
 - Room status overview, searchable repair queue, and a durable repair history.
@@ -36,7 +39,7 @@ npm run build
 
 ## Hosting and GitHub
 
-This GitHub repository stores the source for the existing Sites-hosted application. Its homepage points to the live app. Production remains hosted by Sites with its existing private audience; GitHub source visibility does not change access to hotel records.
+This GitHub repository stores the source for the existing Sites-hosted application. Its homepage points to the live app. Production is hosted by Sites. Signup is public; hotel records and photos require an approved account. GitHub source visibility does not grant access to hotel records.
 
 `.openai/hosting.json` identifies the existing Site and its logical D1 (`DB`) and R2 (`PHOTOS`) bindings. Sites owns the production resources and applies the committed Drizzle migrations when publishing. `wrangler.jsonc` provides local development bindings and type generation; its placeholder database ID is not a production deployment target.
 
@@ -46,6 +49,8 @@ Keep environment files, credentials, database contents, and personal uploads out
 
 ## Access
 
-The current deployment retains the owner's private Sites access. Phone/PIN accounts operate within that access boundary. The existing role-selection flow is retained; only maintenance accounts may update repair status. PINs are salted and hashed, sessions use HttpOnly cookies, and repeated login attempts are limited.
+New phone/PIN registrations request a staff or maintenance role and remain pending until the owner approves them. Existing accounts retain their access during the migration. The administrator can remove or restore access without deleting ticket history. Removal deletes every active session for that account. Only maintenance can submit repair evidence; only the administrator can approve completion or reopen completed tickets. PINs are salted and hashed, sessions use HttpOnly cookies, and repeated login attempts are limited.
+
+Set the secret runtime variable `ADMIN_EMAIL` in Sites to the verified owner email. Administrator access requires trusted Sites-forwarded identity headers matching that address. The owner uses **Site owner / admin sign in**. Never expose a user-selectable admin role or trust an identity supplied in a form. In local development, use an ignored `.dev.vars` file with `ADMIN_EMAIL=owner@fyxinn.test`; automated tests simulate that trusted identity only against localhost. `npm test` creates and removes this local test configuration when no `.dev.vars` file exists.
 
 Camera access requires HTTPS (or localhost) and the user's browser permission. JPEG, PNG, and WebP photos are supported. Photos are resized before upload. A physical iPhone/Android camera check remains advisable before expanding use to staff devices.

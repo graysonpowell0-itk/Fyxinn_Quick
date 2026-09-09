@@ -3,20 +3,40 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import PhotoPicker from "./PhotoPicker";
 import ModalFrame from "./ModalFrame";
+import UserManagement from "./UserManagement";
+import RepairForm from "./RepairForm";
 
 type Language = "en" | "es";
-type Role = "staff" | "maintenance";
-type Status = "unaddressed" | "in-progress" | "completed";
+type Role = "staff" | "maintenance" | "admin";
+export type Status =
+  | "unaddressed"
+  | "in-progress"
+  | "awaiting-review"
+  | "completed";
 type Floor = "first" | "second" | "common";
 
-type Account = {
+export type Account = {
+  id?: string;
+  approvalStatus?: "pending" | "approved" | "removed";
   name: string;
   phone: string;
   demo?: boolean;
   role: Role;
 };
 
-type Issue = {
+export type Issue = {
+  latestSubmissionId?: string | null;
+  repairs?: {
+    id: string;
+    comment: string;
+    submittedBy: string;
+    submittedAt: string;
+    reviewStatus: string;
+    reviewNote: string | null;
+    reviewedBy: string | null;
+    reviewedAt: string | null;
+    photos: string[];
+  }[];
   id: string;
   location: string;
   locationType: "room" | "common";
@@ -30,7 +50,12 @@ type Issue = {
   updatedAt: string;
   completedAt: string | null;
   photos: string[];
-  updates?: { status: Status; actorName: string; createdAt: string }[];
+  updates?: {
+    status: Status;
+    actorName: string;
+    createdAt: string;
+    note?: string | null;
+  }[];
 };
 
 const rooms = {
@@ -213,6 +238,7 @@ const copy = {
     unaddressed: "Unaddressed",
     inProgress: "In progress",
     completed: "Completed",
+    "awaiting-review": "Awaiting review",
     noIssues: "No issues",
     statusKey: "Status key",
     roomOverview: "Room overview",
@@ -259,7 +285,7 @@ const copy = {
     selectLocation: "Select a location",
     selectCategory: "Select a repair type",
     language: "Español",
-    accountReady: "Account created. You’re signed in.",
+    accountReady: "Account requested. Waiting for administrator approval.",
   },
   es: {
     welcome: "Bienvenido a Fyxinn Quick",
@@ -296,6 +322,7 @@ const copy = {
     unaddressed: "Sin atender",
     inProgress: "En progreso",
     completed: "Completado",
+    "awaiting-review": "Pendiente de revisión",
     noIssues: "Sin problemas",
     statusKey: "Clave de estado",
     roomOverview: "Resumen de habitaciones",
@@ -343,7 +370,7 @@ const copy = {
     selectLocation: "Seleccione una ubicación",
     selectCategory: "Seleccione el tipo de reparación",
     language: "English",
-    accountReady: "Cuenta creada. Su sesión está iniciada.",
+    accountReady: "Cuenta solicitada. Espere la aprobación del administrador.",
   },
 } as const;
 
@@ -417,6 +444,8 @@ export default function FyxinnQuick() {
   const [selected, setSelected] = useState<Issue | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [toast, setToast] = useState("");
+  const [usersOpen, setUsersOpen] = useState(false);
+  const [authRefresh, setAuthRefresh] = useState(0);
   const [profileOpen, setProfileOpen] = useState(false);
   const t = copy[language];
 
@@ -452,7 +481,8 @@ export default function FyxinnQuick() {
     }
   }, [language]);
   useEffect(() => {
-    if (!session || session.demo) return;
+    if (!session || session.demo || session.approvalStatus !== "approved")
+      return;
     const controller = new AbortController();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Synchronize request loading state with the external store.
     setLoading(true);
@@ -475,7 +505,8 @@ export default function FyxinnQuick() {
     return () => controller.abort();
   }, [session, refresh]);
   useEffect(() => {
-    if (!session || session.demo) return;
+    if (!session || session.demo || session.approvalStatus !== "approved")
+      return;
     const reload = () => {
       if (document.visibilityState === "visible")
         setRefresh((value) => value + 1);
@@ -487,6 +518,41 @@ export default function FyxinnQuick() {
       window.removeEventListener("focus", reload);
     };
   }, [session]);
+
+  useEffect(() => {
+    if (!session || session.demo) return;
+    let active = true;
+    async function check() {
+      try {
+        const response = await fetch("/api/auth", { cache: "no-store" });
+        if (!response.ok) return;
+        const data = (await response.json()) as { account: Account | null };
+        if (!active) return;
+        setSession((previous) =>
+          previous?.id === data.account?.id &&
+          previous?.approvalStatus === data.account?.approvalStatus &&
+          previous?.role === data.account?.role
+            ? previous
+            : data.account,
+        );
+        if (!data.account || data.account.approvalStatus !== "approved") {
+          setIssues([]);
+          setSelected(null);
+          setReportOpen(false);
+        }
+      } catch {
+        /* Retry on the next poll. */
+      }
+    }
+    void check();
+    const timer = window.setInterval(check, 15000);
+    window.addEventListener("focus", check);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", check);
+    };
+  }, [session, authRefresh]);
 
   useEffect(() => {
     if (!toast) return;
@@ -526,19 +592,23 @@ export default function FyxinnQuick() {
       };
       if (!response.ok) {
         setLoginError(
-          data.error === "duplicate"
+          data.error === "removed"
             ? language === "en"
-              ? "This phone number already has an account. Sign in instead."
-              : "Este teléfono ya tiene una cuenta. Inicie sesión."
-            : data.error === "rate_limit"
+              ? "Your access was removed. Contact the administrator."
+              : "Su acceso fue retirado. Contacte al administrador."
+            : data.error === "duplicate"
               ? language === "en"
-                ? "Too many attempts. Try again in 15 minutes."
-                : "Demasiados intentos. Inténtelo en 15 minutos."
-              : response.status === 401
-                ? t.invalidLogin
-                : language === "en"
-                  ? "Sign-in is unavailable. Please try again."
-                  : "No se pudo iniciar sesión. Inténtelo de nuevo.",
+                ? "This phone number already has an account. Sign in instead."
+                : "Este teléfono ya tiene una cuenta. Inicie sesión."
+              : data.error === "rate_limit"
+                ? language === "en"
+                  ? "Too many attempts. Try again in 15 minutes."
+                  : "Demasiados intentos. Inténtelo en 15 minutos."
+                : response.status === 401
+                  ? t.invalidLogin
+                  : language === "en"
+                    ? "Sign-in is unavailable. Please try again."
+                    : "No se pudo iniciar sesión. Inténtelo de nuevo.",
         );
         return;
       }
@@ -564,6 +634,10 @@ export default function FyxinnQuick() {
   }
   async function signOut() {
     try {
+      if (session?.role === "admin" && !session.demo) {
+        window.location.assign("/signout-with-chatgpt?return_to=/");
+        return;
+      }
       if (!session?.demo) {
         const response = await fetch("/api/auth", { method: "DELETE" });
         if (!response.ok) throw new Error();
@@ -710,6 +784,17 @@ export default function FyxinnQuick() {
               {creating ? t.haveAccount : t.create}
             </button>
             {!creating && (
+              <a
+                className="admin-signin"
+                href="/signin-with-chatgpt?return_to=/"
+                target="_top"
+              >
+                {language === "en"
+                  ? "Site owner / admin sign in"
+                  : "Acceso del propietario / administrador"}
+              </a>
+            )}
+            {!creating && (
               <div className="demo-box">
                 <span>{t.demo}</span>
                 <div>
@@ -734,9 +819,57 @@ export default function FyxinnQuick() {
     );
   }
 
+  if (!session.demo && session.approvalStatus !== "approved")
+    return (
+      <main className="approval-shell">
+        <section className="approval-card">
+          <img
+            src="/fyxinn-quick-logo.png"
+            alt="Fyxinn Quick"
+            className="wordmark"
+          />
+          <button
+            className="language-button"
+            onClick={() => setLanguage(language === "en" ? "es" : "en")}
+          >
+            {t.language}
+          </button>
+          <h1>
+            {language === "en"
+              ? "Waiting for approval"
+              : "Esperando aprobación"}
+          </h1>
+          <p>
+            {language === "en"
+              ? "Your account request has been sent to Grayson. You can access tickets once he approves your account."
+              : "Su solicitud fue enviada a Grayson. Podrá acceder a los tickets cuando apruebe su cuenta."}
+          </p>
+          <p>
+            <strong>{session.name}</strong>
+            <br />
+            {displayPhone(session.phone)}
+          </p>
+          <div className="user-actions">
+            <button
+              className="primary-button"
+              onClick={() => setAuthRefresh((v) => v + 1)}
+            >
+              {language === "en" ? "Check approval" : "Consultar aprobación"}
+            </button>
+            <button className="secondary-button" onClick={() => void signOut()}>
+              {t.signOut}
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  const isAdmin = session.role === "admin";
   const isMaintenance = session.role === "maintenance";
   const openCount = issues.filter(
     (issue) => issue.status === "unaddressed",
+  ).length;
+  const reviewCount = issues.filter(
+    (issue) => issue.status === "awaiting-review",
   ).length;
   const progressCount = issues.filter(
     (issue) => issue.status === "in-progress",
@@ -746,7 +879,12 @@ export default function FyxinnQuick() {
   ).length;
   const allLocations = floor === "common" ? commonAreas : rooms[floor];
   const latestByLocation = new Map<string, Issue>();
-  const priority = { unaddressed: 0, "in-progress": 1, completed: 2 };
+  const priority = {
+    unaddressed: 0,
+    "in-progress": 1,
+    "awaiting-review": 2,
+    completed: 3,
+  };
   [...issues]
     .sort(
       (a, b) =>
@@ -846,7 +984,15 @@ export default function FyxinnQuick() {
               <span className="avatar">{initials(session.name)}</span>
               <span className="profile-copy">
                 <b>{session.name}</b>
-                <small>{isMaintenance ? t.maintenance : t.staff}</small>
+                <small>
+                  {isAdmin
+                    ? language === "en"
+                      ? "Administrator"
+                      : "Administrador"
+                    : isMaintenance
+                      ? t.maintenance
+                      : t.staff}
+                </small>
               </span>
               <span aria-hidden="true">⌄</span>
             </button>
@@ -892,13 +1038,27 @@ export default function FyxinnQuick() {
         <section className="hero-row">
           <div>
             <p className="eyebrow">
-              {isMaintenance ? t.maintenanceDashboard : t.staffDashboard}
+              {isAdmin
+                ? language === "en"
+                  ? "Admin dashboard"
+                  : "Panel de administración"
+                : isMaintenance
+                  ? t.maintenanceDashboard
+                  : t.staffDashboard}
             </p>
             <h1>
               {language === "en" ? "Hello" : "Hola"},{" "}
               {session.name.split(" ")[0]}.
             </h1>
-            <p>{isMaintenance ? t.maintenanceIntro : t.staffIntro}</p>
+            <p>
+              {isAdmin
+                ? language === "en"
+                  ? "Approve your team and review finished repairs."
+                  : "Apruebe a su equipo y revise las reparaciones terminadas."
+                : isMaintenance
+                  ? t.maintenanceIntro
+                  : t.staffIntro}
+            </p>
           </div>
           <button
             className="primary-button report-button"
@@ -908,7 +1068,32 @@ export default function FyxinnQuick() {
           </button>
         </section>
 
-        <section className="summary-grid" aria-label="Issue summary">
+        {isAdmin && (
+          <div className="admin-toolbar">
+            <button
+              className="secondary-button"
+              onClick={() => setUsersOpen(true)}
+            >
+              {language === "en" ? "Manage users" : "Administrar usuarios"}
+            </button>
+            <button
+              className="secondary-button"
+              onClick={() => {
+                setStatusFilter("awaiting-review");
+                setShowAll(true);
+              }}
+            >
+              {language === "en"
+                ? "Review finished repairs"
+                : "Revisar reparaciones terminadas"}{" "}
+              ({reviewCount})
+            </button>
+          </div>
+        )}
+        <section
+          className="summary-grid with-review"
+          aria-label="Issue summary"
+        >
           <button
             className={`summary-card urgent ${statusFilter === "unaddressed" ? "active" : ""}`}
             onClick={() =>
@@ -936,6 +1121,21 @@ export default function FyxinnQuick() {
             <span>
               <b>{progressCount}</b>
               <small>{t.inProgress}</small>
+            </span>
+            <i>→</i>
+          </button>
+          <button
+            className={`summary-card review ${statusFilter === "awaiting-review" ? "active" : ""}`}
+            onClick={() =>
+              setStatusFilter(
+                statusFilter === "awaiting-review" ? "all" : "awaiting-review",
+              )
+            }
+          >
+            <span className="summary-icon">◎</span>
+            <span>
+              <b>{reviewCount}</b>
+              <small>{t["awaiting-review"]}</small>
             </span>
             <i>→</i>
           </button>
@@ -1049,6 +1249,10 @@ export default function FyxinnQuick() {
             <div className="status-legend">
               <strong>{t.statusKey}</strong>
               <span>
+                <i className="review-dot" />
+                {t["awaiting-review"]}
+              </span>
+              <span>
                 <i className="urgent-dot" />
                 {t.unaddressed}
               </span>
@@ -1154,6 +1358,12 @@ export default function FyxinnQuick() {
         </button>
       </nav>
 
+      {usersOpen && isAdmin && (
+        <UserManagement
+          language={language}
+          onClose={() => setUsersOpen(false)}
+        />
+      )}
       {reportOpen && (
         <ReportModal
           language={language}
@@ -1189,7 +1399,19 @@ export default function FyxinnQuick() {
           onClose={() => setSelected(null)}
           busy={statusBusy}
           error={statusError}
-          onStatus={async (status) => {
+          onRepairSaved={(updated) => {
+            setIssues((current) =>
+              current.map((issue) =>
+                issue.id === updated.id ? updated : issue,
+              ),
+            );
+            setToast(
+              language === "en"
+                ? "Repair sent for admin review"
+                : "Reparación enviada a revisión",
+            );
+          }}
+          onStatus={async (status, note) => {
             if (statusBusy) return;
             setStatusBusy(true);
             setStatusError("");
@@ -1233,6 +1455,8 @@ export default function FyxinnQuick() {
                     id: selected.id,
                     status,
                     expectedStatus: current.status,
+                    submissionId: current.latestSubmissionId,
+                    note,
                   }),
                 });
                 if (!response.ok) {
@@ -1504,6 +1728,7 @@ function IssueModal({
   language,
   onClose,
   onStatus,
+  onRepairSaved,
   busy,
   error,
 }: {
@@ -1511,20 +1736,26 @@ function IssueModal({
   account: Account;
   language: Language;
   onClose: () => void;
-  onStatus: (status: Status) => void;
+  onStatus: (status: Status, note?: string) => void;
+  onRepairSaved: (issue: Issue) => void;
   busy: boolean;
   error: string;
 }) {
+  const [repairBusy, setRepairBusy] = useState(false);
+  const [reviewNote, setReviewNote] = useState("");
+  const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
+  const locked = busy || repairBusy;
   const t = copy[language];
   const statusKey =
     issue.status === "in-progress" ? "inProgress" : issue.status;
   const isMaintenance = account.role === "maintenance";
+  const isAdmin = account.role === "admin";
   return (
     <ModalFrame
       className="issue-modal"
       titleId="issue-title"
       onClose={onClose}
-      busy={busy}
+      busy={locked}
     >
       <header className="modal-header issue-modal-head">
         <div>
@@ -1541,7 +1772,7 @@ function IssueModal({
         </div>
         <button
           className="close-button"
-          disabled={busy}
+          disabled={locked}
           onClick={onClose}
           aria-label={t.close}
         >
@@ -1589,6 +1820,88 @@ function IssueModal({
             )}
           </div>
         </section>
+        {(issue.repairs ?? []).map((repair) => (
+          <section key={repair.id} className="repair-evidence">
+            <h4>
+              {language === "en"
+                ? "Repair submission"
+                : "Reporte de reparación"}{" "}
+              ·{" "}
+              {repair.reviewStatus === "pending"
+                ? t["awaiting-review"]
+                : repair.reviewStatus === "approved"
+                  ? t.completed
+                  : language === "en"
+                    ? "Returned for more work"
+                    : "Devuelta para más trabajo"}
+            </h4>
+            <p className="repair-comment">{repair.comment}</p>
+            <p className="muted">
+              {repair.submittedBy} ·{" "}
+              {relativeTime(repair.submittedAt, language)}
+            </p>
+            <div className="detail-photos">
+              {repair.photos.map((url, index) => (
+                <button
+                  className="photo-review-button"
+                  key={url}
+                  onClick={() => setExpandedPhoto(url)}
+                  aria-label={`${language === "en" ? "View repair photo" : "Ver foto de reparación"} ${index + 1}`}
+                >
+                  <img
+                    src={url}
+                    alt={`${language === "en" ? "Repair photo" : "Foto de reparación"} ${index + 1}`}
+                  />
+                </button>
+              ))}
+            </div>
+            {repair.reviewedBy && (
+              <p className="review-note">
+                <strong>{repair.reviewedBy}</strong> ·{" "}
+                {repair.reviewNote ||
+                  (language === "en"
+                    ? "Repair approved"
+                    : "Reparación aprobada")}
+              </p>
+            )}
+          </section>
+        ))}
+        {isMaintenance && issue.status === "in-progress" && (
+          <RepairForm
+            key={issue.latestSubmissionId ?? issue.id}
+            issue={issue}
+            account={account}
+            language={language}
+            onSaved={onRepairSaved}
+            onBusy={setRepairBusy}
+          />
+        )}
+        {issue.status === "awaiting-review" && (
+          <div className="notice">
+            {isAdmin
+              ? language === "en"
+                ? "Review the repair photos and comment before marking this ticket complete."
+                : "Revise las fotos y el comentario antes de completar el ticket."
+              : language === "en"
+                ? "Maintenance has finished. This ticket is waiting for administrator review."
+                : "Mantenimiento terminó. Este ticket espera la revisión del administrador."}
+          </div>
+        )}
+        {isAdmin && issue.status === "awaiting-review" && (
+          <label className="description-field">
+            <span>
+              {language === "en"
+                ? "Review comment (required when returning work)"
+                : "Comentario de revisión (obligatorio para devolver)"}
+            </span>
+            <textarea
+              value={reviewNote}
+              disabled={locked}
+              maxLength={1000}
+              onChange={(event) => setReviewNote(event.target.value)}
+            />
+          </label>
+        )}
         <section>
           <h4>{t.issueLog}</h4>
           <div className="timeline">
@@ -1615,12 +1928,15 @@ function IssueModal({
                         ? t.reopen
                         : update.status === "in-progress"
                           ? t.repairStarted
-                          : t.repairCompleted}
+                          : update.status === "awaiting-review"
+                            ? t["awaiting-review"]
+                            : t.repairCompleted}
                   </b>
                   <small>
                     {update.actorName} ·{" "}
                     {relativeTime(update.createdAt, language)}
                   </small>
+                  {update.note && <small>{update.note}</small>}
                 </span>
               </div>
             ))}
@@ -1633,37 +1949,80 @@ function IssueModal({
         </p>
       )}
       <footer className="modal-footer">
-        <button className="secondary-button" disabled={busy} onClick={onClose}>
+        <button
+          className="secondary-button"
+          disabled={locked}
+          onClick={onClose}
+        >
           {t.close}
         </button>
         {isMaintenance && issue.status === "unaddressed" && (
           <button
             className="primary-button"
-            disabled={busy}
+            disabled={locked}
             onClick={() => onStatus("in-progress")}
           >
             {t.startRepair} <span>→</span>
           </button>
         )}
-        {isMaintenance && issue.status === "in-progress" && (
-          <button
-            className="primary-button complete-button"
-            disabled={busy}
-            onClick={() => onStatus("completed")}
-          >
-            ✓ {t.markComplete}
-          </button>
+        {isAdmin && issue.status === "awaiting-review" && (
+          <>
+            <button
+              className="secondary-button"
+              disabled={locked || reviewNote.trim().length < 3}
+              onClick={() => onStatus("in-progress", reviewNote)}
+            >
+              {language === "en"
+                ? "Return for more work"
+                : "Devolver para más trabajo"}
+            </button>
+            <button
+              className="primary-button complete-button"
+              disabled={locked}
+              onClick={() => onStatus("completed", reviewNote)}
+            >
+              {language === "en"
+                ? "Approve & mark complete"
+                : "Aprobar y completar"}
+            </button>
+          </>
         )}
-        {isMaintenance && issue.status === "completed" && (
+        {isAdmin && issue.status === "completed" && (
           <button
             className="primary-button"
-            disabled={busy}
+            disabled={locked}
             onClick={() => onStatus("unaddressed")}
           >
             {t.reopen}
           </button>
         )}
       </footer>
+      {expandedPhoto && (
+        <ModalFrame
+          className="photo-viewer"
+          titleId="photo-viewer-title"
+          onClose={() => setExpandedPhoto(null)}
+        >
+          <header className="modal-header">
+            <h2 id="photo-viewer-title">
+              {language === "en" ? "Repair photo" : "Foto de reparación"}
+            </h2>
+            <button
+              className="close-button"
+              onClick={() => setExpandedPhoto(null)}
+              aria-label={t.close}
+            >
+              ×
+            </button>
+          </header>
+          <img
+            src={expandedPhoto}
+            alt={
+              language === "en" ? "Repair evidence" : "Evidencia de reparación"
+            }
+          />
+        </ModalFrame>
+      )}
     </ModalFrame>
   );
 }

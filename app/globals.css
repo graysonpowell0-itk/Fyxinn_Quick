@@ -1892,3 +1892,28 @@ button:disabled { cursor: default; }
 .camera-preview[hidden] { display: none; }
 .modal-header > div { min-width: 0; }
 .modal-header .eyebrow { overflow-wrap: anywhere; }
+.admin-toolbar, .user-actions { display:flex; flex-wrap:wrap; gap:.65rem; align-items:center; }
+.admin-toolbar { margin: 0 0 1rem; }
+.summary-grid.with-review { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.summary-card.review, .room-card.awaiting-review { background:#fff3dc; border-color:#d48c45; }
+.review-dot, .activity-status.awaiting-review { background:#bd7b29; }
+.large-status.awaiting-review, .activity-copy em.awaiting-review { background:#fff3dc; color:#82500d; }
+.room-card.awaiting-review .room-status { color:#82500d; }
+.users-modal { width:850px; }.confirm-modal { width:480px; }
+.users-body { padding:1.5rem; }.users-body h3 { margin:1.5rem 0 .7rem; font-size:1.1rem; }
+.user-row { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; padding:1rem 0; border-bottom:1px solid var(--line); }
+.user-row small { display:block; color:var(--muted); margin-top:.3rem; }
+.approval-shell { min-height:100dvh; display:grid; place-items:center; padding:1rem; }
+.approval-card { width:min(100%,560px); padding:2rem; border:1px solid var(--line); border-radius:18px; background:var(--paper); }
+.approval-card h1 { font-size:2rem; }.approval-card p { line-height:1.6; }
+.approval-card .language-button { float:right; }
+.admin-signin { display:block; margin-top:1rem; color:var(--brick); text-align:center; font-weight:650; }
+.repair-form { padding-top:1rem; border-top:1px solid var(--line); }
+.repair-form .photo-grid { margin-bottom:1rem; }.repair-form textarea { min-height:110px; }
+.repair-form p { line-height:1.5; }.repair-evidence { padding:1rem; border:1px solid var(--line); border-radius:12px; }
+.repair-comment,.review-note { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.5; }
+.photo-review-button { padding:0; background:transparent; border:0; border-radius:10px; overflow:hidden; }
+.photo-review-button img { display:block; }.photo-viewer { width:1000px; }
+.photo-viewer > img { display:block; max-height:75dvh; width:100%; object-fit:contain; }
+.issue-modal .modal-footer { flex-wrap:wrap; }
+@media(max-width:620px){.summary-grid.with-review{grid-template-columns:repeat(2,minmax(0,1fr));}.users-body{padding:1rem;}.admin-toolbar > button{flex:1;}.user-actions > button{font-size:.875rem;}.approval-card{padding:1.5rem;}.summary-card small{font-size:.875rem;}}

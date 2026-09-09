@@ -1,12 +1,20 @@
 import { spawn, spawnSync } from "node:child_process";
+import { existsSync, writeFileSync, unlinkSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 
 const base = process.env.TEST_BASE_URL || "http://localhost:3199";
 if (!["localhost", "127.0.0.1"].includes(new URL(base).hostname))
   throw new Error("Use a disposable local database for tests.");
 let server;
+let createdEnv = false;
 try {
   if (!process.env.TEST_BASE_URL) {
+    if (!existsSync(".dev.vars")) {
+      writeFileSync(".dev.vars", "ADMIN_EMAIL=owner@fyxinn.test\n", {
+        mode: 0o600,
+      });
+      createdEnv = true;
+    }
     const migration = spawnSync(
       "npx",
       ["wrangler", "d1", "migrations", "apply", "site-creator-d1", "--local"],
@@ -42,6 +50,7 @@ try {
   );
   process.exitCode = result.status ?? 1;
 } finally {
+  if (createdEnv) unlinkSync(".dev.vars");
   if (server?.pid) {
     try {
       if (process.platform === "win32") server.kill();

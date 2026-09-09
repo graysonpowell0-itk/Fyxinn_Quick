@@ -4,7 +4,8 @@ export type Account = {
   id: string;
   name: string;
   phone: string;
-  role: "staff" | "maintenance";
+  role: "staff" | "maintenance" | "admin";
+  approvalStatus: "pending" | "approved" | "removed";
 };
 export function database() {
   return env.DB as D1Database;
@@ -16,13 +17,28 @@ export function sameOrigin(request: Request) {
 export async function currentAccount(
   request: Request,
 ): Promise<Account | null> {
+  const ownerEmail = (env as unknown as { ADMIN_EMAIL?: string }).ADMIN_EMAIL;
+  if (
+    ownerEmail &&
+    request.headers.get("oai-authenticated-user-id") &&
+    request.headers.get("oai-authenticated-user-email")?.toLowerCase() ===
+      ownerEmail.toLowerCase()
+  ) {
+    return {
+      id: "site-owner",
+      name: "Grayson Powell",
+      phone: "",
+      role: "admin",
+      approvalStatus: "approved",
+    };
+  }
   const token = request.headers
     .get("Cookie")
     ?.match(/(?:^|;\s*)fyxinn_session=([a-f0-9]{64})(?:;|$)/)?.[1];
   if (!token) return null;
   return database()
     .prepare(
-      `SELECT a.id, a.name, a.phone, a.role FROM accounts a
+      `SELECT a.id, a.name, a.phone, a.role, a.approval_status AS approvalStatus FROM accounts a
     JOIN account_sessions s ON s.account_id = a.id WHERE s.token = ? AND s.expires_at > ?`,
     )
     .bind(token, Date.now())
@@ -61,4 +77,9 @@ export function equalHash(a: string, b: string) {
   let diff = a.length ^ b.length;
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return diff === 0;
+}
+
+export async function approvedAccount(request: Request) {
+  const account = await currentAccount(request);
+  return account?.approvalStatus === "approved" ? account : null;
 }
