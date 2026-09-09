@@ -1,4 +1,4 @@
-import { index, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const issues = sqliteTable(
   "issues",
@@ -50,3 +50,23 @@ export const issueUpdates = sqliteTable(
   },
   (table) => [index("idx_issue_updates_issue_id").on(table.issueId)],
 );
+
+export const accounts = sqliteTable("accounts", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  phone: text("phone").notNull().unique(),
+  pinHash: text("pin_hash").notNull(),
+  salt: text("salt").notNull(),
+  role: text("role").notNull(),
+});
+export const accountSessions = sqliteTable("account_sessions", {
+  token: text("token").primaryKey(),
+  accountId: text("account_id")
+    .notNull()
+    .references(() => accounts.id, { onDelete: "cascade" }),
+  expiresAt: integer("expires_at").notNull(),
+});
+export const loginAttempts = sqliteTable("login_attempts", {
+  id: text("id").primaryKey(),
+  count: integer("count").notNull(),
+});

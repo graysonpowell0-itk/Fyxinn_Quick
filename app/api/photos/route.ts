@@ -1,4 +1,5 @@
 import { env as workerEnv } from "cloudflare:workers";
+import { currentAccount } from "../../lib/auth";
 
 interface StoredObject {
   body: ReadableStream;
@@ -10,6 +11,8 @@ interface RuntimeEnv {
 }
 
 export async function GET(request: Request) {
+  if (!(await currentAccount(request)))
+    return new Response("Sign in required", { status: 401 });
   const key = new URL(request.url).searchParams.get("key");
   if (!key || !key.startsWith("issues/")) {
     return new Response("Not found", { status: 404 });
@@ -21,6 +24,7 @@ export async function GET(request: Request) {
     headers: {
       "Content-Type": object.httpMetadata?.contentType ?? "image/jpeg",
       "Cache-Control": "private, max-age=3600",
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }

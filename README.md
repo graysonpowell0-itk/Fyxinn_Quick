@@ -1,100 +1,51 @@
-# vinext-starter
+# Fyxinn Quick
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+Bilingual hotel maintenance reporting for rooms 100–127, 200–233, and common areas.
 
-## Prerequisites
+Live site: https://fyxinn-quick.graysonpowell0.chatgpt.site/
 
-- Node.js `>=22.13.0`
+## Features
 
-## Quick Start
+- Persistent phone/PIN accounts and staff/maintenance roles.
+- Reports with exactly three photos, using the camera or existing files.
+- Live camera preview, capture, retake, camera switching, and device-camera fallback.
+- Room status overview, searchable repair queue, and a durable repair history.
+- English and Spanish interfaces with responsive mobile layouts.
+- Isolated practice demos. Demo changes never write to the hotel database.
 
-```bash
-npm install
+## Local development
+
+Use Node.js 22.13 or newer.
+
+```sh
+npm ci
+npm run db:migrate:local
 npm run dev
+```
+
+The local database and photo bucket live in ignored `.wrangler/` storage. Local accounts and reports are separate from production. Create a local account or use either demo button.
+
+```sh
+npm run lint
+npm run typecheck
+npm test
 npm run build
 ```
 
-This starter does not use `wrangler.jsonc`.
+`npm test` applies local migrations, starts a temporary local server on port 3199, verifies account persistence, uploads, validation, authorization, idempotency, and repair history, then stops the server. It creates clearly named QA records in the local database. Set `TEST_BASE_URL` to test an already-running local server. Tests reject non-local URLs.
 
-## Included Shape
+## Hosting and GitHub
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
+This GitHub repository stores the source for the existing Sites-hosted application. Its homepage points to the live app. Production remains hosted by Sites with its existing private audience; GitHub source visibility does not change access to hotel records.
 
-## Workspace Auth Headers
+`.openai/hosting.json` identifies the existing Site and its logical D1 (`DB`) and R2 (`PHOTOS`) bindings. Sites owns the production resources and applies the committed Drizzle migrations when publishing. `wrangler.jsonc` provides local development bindings and type generation; its placeholder database ID is not a production deployment target.
 
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
+To release changes, validate the source, push the same commit to GitHub and the managed Sites source repository, package the matching Worker build, and publish a saved version through Sites. A GitHub push alone does not publish the site.
 
-The user ID is stable for the same user on the same Site and different across Sites. Email and name are intended for display or contact purposes.
+Keep environment files, credentials, database contents, and personal uploads out of Git. Existing migration files are immutable; generate a new migration for schema changes.
 
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
+## Access
 
-Treat the full name as optional and fall back to email when it is absent:
+The current deployment retains the owner's private Sites access. Phone/PIN accounts operate within that access boundary. The existing role-selection flow is retained; only maintenance accounts may update repair status. PINs are salted and hashed, sessions use HttpOnly cookies, and repeated login attempts are limited.
 
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
-```
-
-## Optional Dispatch-Owned ChatGPT Sign-In
-
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
-
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+Camera access requires HTTPS (or localhost) and the user's browser permission. JPEG, PNG, and WebP photos are supported. Photos are resized before upload. A physical iPhone/Android camera check remains advisable before expanding use to staff devices.
