@@ -5,6 +5,7 @@ export type Account = {
   name: string;
   phone: string;
   role: "staff" | "maintenance" | "admin";
+  authMethod?: "chatgpt" | "password";
   approvalStatus: "pending" | "approved" | "removed";
 };
 export function database() {
@@ -25,6 +26,7 @@ export async function currentAccount(
       ownerEmail.toLowerCase()
   ) {
     return {
+      authMethod: "chatgpt",
       id: "site-owner",
       name: "Grayson Powell",
       phone: "",
@@ -38,7 +40,7 @@ export async function currentAccount(
   if (!token) return null;
   return database()
     .prepare(
-      `SELECT a.id, a.name, a.phone, a.role, a.approval_status AS approvalStatus FROM accounts a
+      `SELECT a.id, a.name, a.phone, a.role, a.approval_status AS approvalStatus, 'password' AS authMethod FROM accounts a
     JOIN account_sessions s ON s.account_id = a.id WHERE s.token = ? AND s.expires_at > ?`,
     )
     .bind(token, Date.now())

@@ -16,6 +16,7 @@ export type Status =
 type Floor = "first" | "second" | "common";
 
 export type Account = {
+  authMethod?: "chatgpt" | "password";
   id?: string;
   approvalStatus?: "pending" | "approved" | "removed";
   name: string;
@@ -568,9 +569,15 @@ export default function FyxinnQuick() {
     if (
       (creating && name.trim().length < 2) ||
       digits.length !== 10 ||
-      !/^\d{6}$/.test(pin)
+      (creating ? !/^\d{6}$/.test(pin) : pin.length < 1 || pin.length > 128)
     ) {
-      setLoginError(t.formError);
+      setLoginError(
+        creating
+          ? t.formError
+          : language === "en"
+            ? "Enter your phone number and password."
+            : "Ingrese su teléfono y contraseña.",
+      );
       return;
     }
     setAuthBusy(true);
@@ -634,13 +641,13 @@ export default function FyxinnQuick() {
   }
   async function signOut() {
     try {
-      if (session?.role === "admin" && !session.demo) {
-        window.location.assign("/signout-with-chatgpt?return_to=/");
-        return;
-      }
       if (!session?.demo) {
         const response = await fetch("/api/auth", { method: "DELETE" });
         if (!response.ok) throw new Error();
+      }
+      if (session?.authMethod === "chatgpt") {
+        window.location.assign("/signout-with-chatgpt?return_to=/");
+        return;
       }
       setSession(null);
       setIssues([]);
@@ -723,18 +730,29 @@ export default function FyxinnQuick() {
                   value={displayPhone(phone)}
                   onChange={(event) => setPhone(cleanPhone(event.target.value))}
                   inputMode="tel"
-                  autoComplete="tel"
+                  autoComplete={creating ? "tel" : "username"}
                   placeholder="(404) 555-0000"
                 />
               </label>
               <label>
-                <span>{t.pin}</span>
+                <span>
+                  {creating
+                    ? t.pin
+                    : language === "en"
+                      ? "Password"
+                      : "Contraseña"}
+                </span>
                 <input
                   value={pin}
                   onChange={(event) =>
-                    setPin(event.target.value.replace(/\D/g, "").slice(0, 6))
+                    setPin(
+                      creating
+                        ? event.target.value.replace(/\D/g, "").slice(0, 6)
+                        : event.target.value.slice(0, 128),
+                    )
                   }
-                  inputMode="numeric"
+                  inputMode={creating ? "numeric" : undefined}
+                  maxLength={creating ? 6 : 128}
                   type="password"
                   autoComplete={creating ? "new-password" : "current-password"}
                   placeholder="••••••"

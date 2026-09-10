@@ -1,3 +1,4 @@
+import { pbkdf2Sync } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, writeFileSync, unlinkSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
@@ -10,9 +11,13 @@ let createdEnv = false;
 try {
   if (!process.env.TEST_BASE_URL) {
     if (!existsSync(".dev.vars")) {
-      writeFileSync(".dev.vars", "ADMIN_EMAIL=owner@fyxinn.test\n", {
-        mode: 0o600,
-      });
+      writeFileSync(
+        ".dev.vars",
+        `ADMIN_EMAIL=owner@fyxinn.test\nADMIN_PHONE=5550100999\nADMIN_PASSWORD_SALT=qa-admin-password-salt\nADMIN_PASSWORD_HASH=${pbkdf2Sync("QA#Owner2026", "qa-admin-password-salt", 100000, 32, "sha256").toString("hex")}\n`,
+        {
+          mode: 0o600,
+        },
+      );
       createdEnv = true;
     }
     const migration = spawnSync(

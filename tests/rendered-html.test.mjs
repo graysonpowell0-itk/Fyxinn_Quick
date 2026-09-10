@@ -410,3 +410,58 @@ test("approval, revocation, repair evidence, administrator review, and history",
   await expect(await request("/api/auth", { method: "DELETE" }, staff), 200);
   await expect(await request("/api/issues", {}, staff), 401);
 });
+
+test("administrator password login, reservation, persistence, and sign-out", async () => {
+  const login = { action: "login", phone: "555-010-0999", pin: "QA#Owner2026" };
+  await expect(
+    await request("/api/auth", json({ ...login, pin: "wrong#Password" })),
+    401,
+  );
+  await expect(
+    await request(
+      "/api/auth",
+      json({
+        ...login,
+        action: "register",
+        pin: "123456",
+        name: "Imposter",
+        role: "staff",
+      }),
+    ),
+    409,
+  );
+  const r = await request("/api/auth", json(login));
+  const data = await expect(r, 200);
+  assert.equal(data.account.role, "admin");
+  assert.equal(data.account.approvalStatus, "approved");
+  assert.equal(data.account.authMethod, "password");
+  assert.equal(data.account.name, "Grayson Powell");
+  assert.equal(data.account.phone, "5550100999");
+  assert.equal(data.account.pin_hash, undefined);
+  assert.equal(data.account.salt, undefined);
+  const actor = {
+    headers: { Cookie: r.headers.get("set-cookie").split(";")[0] },
+  };
+  const current = await expect(await request("/api/auth", {}, actor), 200);
+  assert.equal(current.account.role, "admin");
+  assert.equal(current.account.authMethod, "password");
+  const users = await expect(await request("/api/users", {}, actor), 200);
+  assert.ok(users.users.every((user) => user.role !== "admin"));
+  await expect(
+    await request(
+      "/api/users",
+      json(
+        { id: data.account.id, action: "remove", expectedStatus: "approved" },
+        "PATCH",
+      ),
+      actor,
+    ),
+    403,
+  );
+  await expect(await request("/api/auth", { method: "DELETE" }, actor), 200);
+  assert.equal(
+    (await expect(await request("/api/auth", {}, actor), 200)).account,
+    null,
+  );
+  await expect(await request("/api/users", {}, actor), 403);
+});

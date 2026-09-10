@@ -7,7 +7,7 @@ Live site: https://fyxinn-quick.graysonpowell0.chatgpt.site/
 ## Features
 
 - Persistent phone/PIN accounts with owner approval and immediate access removal.
-- Owner administrator sign-in through the verified ChatGPT identity.
+- Owner administrator sign-in with a configured phone/password or verified ChatGPT identity.
 - Maintenance submits exactly three repair photos and a repair comment.
 - Finished work waits for the administrator to approve completion or return it with feedback.
 - Reports with exactly three photos, using the camera or existing files.
@@ -53,6 +53,6 @@ Keep environment files, credentials, database contents, and personal uploads out
 
 New phone/PIN registrations request a staff or maintenance role and remain pending until the owner approves them. Existing accounts retain their access during the migration. The administrator can remove or restore access without deleting ticket history. Removal deletes every active session for that account. Only maintenance can submit repair evidence; only the administrator can approve completion or reopen completed tickets. PINs are salted and hashed, sessions use HttpOnly cookies, and repeated login attempts are limited.
 
-Set the secret runtime variable `ADMIN_EMAIL` in Sites to the verified owner email. Administrator access requires trusted Sites-forwarded identity headers matching that address. The owner uses **Site owner / admin sign in**. Never expose a user-selectable admin role or trust an identity supplied in a form. In local development, use an ignored `.dev.vars` file with `ADMIN_EMAIL=owner@fyxinn.test`; automated tests simulate that trusted identity only against localhost. `npm test` creates and removes this local test configuration when no `.dev.vars` file exists.
+Set the secret runtime variable `ADMIN_EMAIL` in Sites to the verified owner email. Administrator access requires trusted Sites-forwarded identity headers matching that address. The owner can also use the regular **Sign in** form with the configured `ADMIN_PHONE` and password. Store `ADMIN_PHONE`, `ADMIN_PASSWORD_HASH`, and `ADMIN_PASSWORD_SALT` as Sites secrets; the password hash uses PBKDF2-SHA256 with 100,000 iterations and a 32-byte result. Never commit the password or these production settings. The owner number is reserved from public signup. The **Site owner / admin sign in** link remains available as an alternative. Never expose a user-selectable admin role or trust an identity supplied in a form. In local development, use an ignored `.dev.vars` file with `ADMIN_EMAIL=owner@fyxinn.test`; automated tests simulate that trusted identity only against localhost. `npm test` creates and removes this local test configuration when no `.dev.vars` file exists.
 
 Camera access requires HTTPS (or localhost) and the user's browser permission. JPEG, PNG, and WebP photos are supported. Photos are resized before upload. A physical iPhone/Android camera check remains advisable before expanding use to staff devices.

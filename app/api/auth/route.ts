@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import {
   currentAccount,
   database,
@@ -31,9 +32,17 @@ export async function POST(request: Request) {
     }
     if (!body || typeof body !== "object")
       return json({ error: "invalid" }, 400);
-    const phone = typeof body.phone === "string" ? body.phone : "";
+    const phone =
+      typeof body.phone === "string"
+        ? body.phone.replace(/[\s()+.-]/g, "")
+        : "";
     const pin = typeof body.pin === "string" ? body.pin : "";
-    if (!/^\d{10}$/.test(phone) || !/^\d{6}$/.test(pin))
+    if (
+      !/^\d{10}$/.test(phone) ||
+      pin.length < 1 ||
+      pin.length > 128 ||
+      (body.action === "register" && !/^\d{6}$/.test(pin))
+    )
       return json({ error: "invalid" }, 400);
     const db = database();
     const bucket = Math.floor(Date.now() / 900000);
@@ -45,8 +54,15 @@ export async function POST(request: Request) {
       .bind(attemptKey)
       .first<{ count: number }>();
     if ((attempts?.count ?? 0) > 10) return json({ error: "rate_limit" }, 429);
+    const config = env as unknown as {
+      ADMIN_PHONE?: string;
+      ADMIN_PASSWORD_HASH?: string;
+      ADMIN_PASSWORD_SALT?: string;
+    };
     let account: Account | null = null;
     if (body.action === "register") {
+      if (phone === config.ADMIN_PHONE)
+        return json({ error: "duplicate" }, 409);
       const name = typeof body.name === "string" ? body.name.trim() : "";
       if (
         name.length < 2 ||
@@ -78,6 +94,33 @@ export async function POST(request: Request) {
         role: body.role as Account["role"],
         approvalStatus: "pending",
       };
+    } else if (body.action === "login" && phone === config.ADMIN_PHONE) {
+      if (!config.ADMIN_PASSWORD_HASH || !config.ADMIN_PASSWORD_SALT)
+        return json({ error: "unavailable" }, 503);
+      const hash = await pinHash(pin, config.ADMIN_PASSWORD_SALT);
+      if (!equalHash(hash, config.ADMIN_PASSWORD_HASH))
+        return json({ error: "credentials" }, 401);
+      // Only the server-configured owner password can create or update this account.
+      // Revoke old sessions if an existing account is promoted or its password changes.
+      await db.batch([
+        db
+          .prepare(
+            "DELETE FROM account_sessions WHERE account_id IN (SELECT id FROM accounts WHERE phone = ? AND (role <> 'admin' OR pin_hash <> ?))",
+          )
+          .bind(phone, hash),
+        db
+          .prepare(
+            "INSERT INTO accounts (id,name,phone,pin_hash,salt,role,approval_status) VALUES (?,'Grayson Powell',?,?,?,'admin','approved') ON CONFLICT(phone) DO UPDATE SET name='Grayson Powell',pin_hash=excluded.pin_hash,salt=excluded.salt,role='admin',approval_status='approved'",
+          )
+          .bind(crypto.randomUUID(), phone, hash, config.ADMIN_PASSWORD_SALT),
+      ]);
+      account = await db
+        .prepare(
+          "SELECT id,name,phone,role,approval_status AS approvalStatus FROM accounts WHERE phone = ?",
+        )
+        .bind(phone)
+        .first<Account>();
+      if (!account) return json({ error: "unavailable" }, 503);
     } else if (body.action === "login") {
       const row = await db
         .prepare(
@@ -86,7 +129,7 @@ export async function POST(request: Request) {
         .bind(phone)
         .first<Account & { pin_hash: string; salt: string }>();
       const hash = await pinHash(pin, row?.salt ?? "unknown-account");
-      if (!row || !equalHash(row.pin_hash, hash))
+      if (!row || row.role === "admin" || !equalHash(row.pin_hash, hash))
         return json({ error: "credentials" }, 401);
       if (row.approvalStatus === "removed")
         return json({ error: "removed" }, 403);
@@ -98,6 +141,7 @@ export async function POST(request: Request) {
         approvalStatus: row.approvalStatus,
       };
     } else return json({ error: "invalid" }, 400);
+    account.authMethod = "password";
     const token =
       crypto.randomUUID().replaceAll("-", "") +
       crypto.randomUUID().replaceAll("-", "");

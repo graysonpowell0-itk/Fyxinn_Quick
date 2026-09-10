@@ -7,7 +7,7 @@ export async function GET(request: Request) {
       return json({ error: "Administrator access required." }, 403);
     const users = await database()
       .prepare(
-        "SELECT id, name, phone, role, approval_status AS approvalStatus FROM accounts ORDER BY CASE approval_status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, name",
+        "SELECT id, name, phone, role, approval_status AS approvalStatus FROM accounts WHERE role <> 'admin' ORDER BY CASE approval_status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, name",
       )
       .all();
     return json({ users: users.results });
