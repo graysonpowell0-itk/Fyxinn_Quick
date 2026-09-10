@@ -85,124 +85,6 @@ function locationLabel(location: string, language: Language) {
   return language === "es" ? (areaNames[location] ?? location) : location;
 }
 
-const starterIssues: Issue[] = [
-  {
-    id: "FXQ-1048",
-    location: "108",
-    locationType: "room",
-    category: "Plumbing",
-    description: "Bathroom faucet is leaking steadily at the base.",
-    status: "unaddressed",
-    reporterName: "Maria S.",
-    reporterPhone: "4045550146",
-    assigneeName: null,
-    createdAt: "2026-09-09T12:14:00.000Z",
-    updatedAt: "2026-09-09T12:14:00.000Z",
-    completedAt: null,
-    photos: [],
-  },
-  {
-    id: "FXQ-1047",
-    location: "114",
-    locationType: "room",
-    category: "HVAC",
-    description: "Air conditioner turns on but is not cooling the room.",
-    status: "in-progress",
-    reporterName: "Elena R.",
-    reporterPhone: "4045550118",
-    assigneeName: "Marcus T.",
-    createdAt: "2026-09-09T11:38:00.000Z",
-    updatedAt: "2026-09-09T11:51:00.000Z",
-    completedAt: null,
-    photos: [],
-  },
-  {
-    id: "FXQ-1044",
-    location: "123",
-    locationType: "room",
-    category: "Electrical",
-    description: "Bedside lamp outlet is not working.",
-    status: "completed",
-    reporterName: "James K.",
-    reporterPhone: "4045550161",
-    assigneeName: "Marcus T.",
-    createdAt: "2026-09-08T16:21:00.000Z",
-    updatedAt: "2026-09-08T17:04:00.000Z",
-    completedAt: "2026-09-08T17:04:00.000Z",
-    photos: [],
-  },
-  {
-    id: "FXQ-1046",
-    location: "207",
-    locationType: "room",
-    category: "Furniture",
-    description: "Desk chair arm is loose and needs to be tightened.",
-    status: "unaddressed",
-    reporterName: "Ana P.",
-    reporterPhone: "4045550129",
-    assigneeName: null,
-    createdAt: "2026-09-09T10:55:00.000Z",
-    updatedAt: "2026-09-09T10:55:00.000Z",
-    completedAt: null,
-    photos: [],
-  },
-  {
-    id: "FXQ-1045",
-    location: "218",
-    locationType: "room",
-    category: "Plumbing",
-    description: "Shower is draining slowly after use.",
-    status: "in-progress",
-    reporterName: "Maria S.",
-    reporterPhone: "4045550146",
-    assigneeName: "David L.",
-    createdAt: "2026-09-09T09:42:00.000Z",
-    updatedAt: "2026-09-09T10:10:00.000Z",
-    completedAt: null,
-    photos: [],
-  },
-  {
-    id: "FXQ-1042",
-    location: "229",
-    locationType: "room",
-    category: "Appliance",
-    description: "Mini refrigerator was not cooling; thermostat replaced.",
-    status: "completed",
-    reporterName: "Elena R.",
-    reporterPhone: "4045550118",
-    assigneeName: "David L.",
-    createdAt: "2026-09-08T13:05:00.000Z",
-    updatedAt: "2026-09-08T14:34:00.000Z",
-    completedAt: "2026-09-08T14:34:00.000Z",
-    photos: [],
-  },
-  {
-    id: "FXQ-1043",
-    location: "North Lobby",
-    locationType: "common",
-    category: "Lighting",
-    description: "Two ceiling lights near the elevators are flickering.",
-    status: "unaddressed",
-    reporterName: "James K.",
-    reporterPhone: "4045550161",
-    assigneeName: null,
-    createdAt: "2026-09-09T08:27:00.000Z",
-    updatedAt: "2026-09-09T08:27:00.000Z",
-    completedAt: null,
-    photos: [],
-  },
-];
-
-const demoAccounts: Account[] = [
-  { name: "Maria Santos", phone: "4045550146", demo: true, role: "staff" },
-  {
-    name: "Marcus Taylor",
-    phone: "4045550199",
-    demo: true,
-    role: "maintenance",
-  },
-];
-
 const copy = {
   en: {
     welcome: "Welcome to Fyxinn Quick",
@@ -218,9 +100,6 @@ const copy = {
     maintenance: "Maintenance tech",
     invalidLogin: "That phone number or password does not match.",
     formError: "Enter a name, 10-digit phone number, and 6-digit password.",
-    demo: "Try a demo account",
-    demoStaff: "Staff demo",
-    demoMaintenance: "Maintenance demo",
     signedInAs: "Signed in as",
     signOut: "Sign out",
     hotel: "Fyxinn Hotel",
@@ -303,9 +182,6 @@ const copy = {
     invalidLogin: "El teléfono o la contraseña no coinciden.",
     formError:
       "Ingrese un nombre, teléfono de 10 dígitos y contraseña de 6 dígitos.",
-    demo: "Probar una cuenta de demostración",
-    demoStaff: "Demo de personal",
-    demoMaintenance: "Demo de mantenimiento",
     signedInAs: "Sesión iniciada como",
     signOut: "Cerrar sesión",
     hotel: "Hotel Fyxinn",
@@ -633,12 +509,6 @@ export default function FyxinnQuick() {
       setAuthBusy(false);
     }
   }
-  function enterDemo(accountRole: Role) {
-    setIssues(starterIssues);
-    setSession(demoAccounts.find((item) => item.role === accountRole)!);
-    setLoadError(false);
-    setPin("");
-  }
   async function signOut() {
     try {
       if (!session?.demo) {
@@ -812,25 +682,7 @@ export default function FyxinnQuick() {
                   : "Acceso del propietario / administrador"}
               </a>
             )}
-            {!creating && (
-              <div className="demo-box">
-                <span>{t.demo}</span>
-                <div>
-                  <button
-                    disabled={authBusy}
-                    onClick={() => enterDemo("staff")}
-                  >
-                    {t.demoStaff}
-                  </button>
-                  <button
-                    disabled={authBusy}
-                    onClick={() => enterDemo("maintenance")}
-                  >
-                    {t.demoMaintenance}
-                  </button>
-                </div>
-              </div>
-            )}
+
           </div>
         </section>
       </main>
@@ -1026,13 +878,7 @@ export default function FyxinnQuick() {
       </header>
 
       <div className="app-content">
-        {session.demo && (
-          <p className="notice">
-            {language === "en"
-              ? "Demo mode · Changes are for practice and are not saved."
-              : "Modo demo · Los cambios son de práctica y no se guardan."}
-          </p>
-        )}
+
         {loadError && (
           <p className="notice" role="alert">
             {language === "en"

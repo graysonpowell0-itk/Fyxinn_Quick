@@ -47,6 +47,7 @@ test("sign-in screen renders", async () => {
   assert.match(html, /Fyxinn Quick/);
   assert.match(html, /Sign in/);
   assert.match(html, /Site owner \/ admin sign in/);
+  assert.doesNotMatch(html,/Staff demo|Maintenance demo|Try a demo account/);
 });
 test("approval, revocation, repair evidence, administrator review, and history", async () => {
   const suffix = String(Date.now()).slice(-6);

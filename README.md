@@ -14,7 +14,6 @@ Live site: https://fyxinn-quick.graysonpowell0.chatgpt.site/
 - Live camera preview, capture, retake, camera switching, and device-camera fallback.
 - Room status overview, searchable repair queue, and a durable repair history.
 - English and Spanish interfaces with responsive mobile layouts.
-- Isolated practice demos. Demo changes never write to the hotel database.
 
 ## Local development
 
@@ -26,7 +25,7 @@ npm run db:migrate:local
 npm run dev
 ```
 
-The local database and photo bucket live in ignored `.wrangler/` storage. Local accounts and reports are separate from production. Create a local account or use either demo button.
+The local database and photo bucket live in ignored `.wrangler/` storage. Local accounts and reports are separate from production. Create a local account and approve it using the local administrator configuration.
 
 ```sh
 npm run lint
