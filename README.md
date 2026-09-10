@@ -45,6 +45,8 @@ This GitHub repository stores the source for the existing Sites-hosted applicati
 
 To release changes, validate the source, push the same commit to GitHub and the managed Sites source repository, package the matching Worker build, and publish a saved version through Sites. A GitHub push alone does not publish the site.
 
+The production build removes local `.dev.vars` files from the generated bundle; runtime secrets are supplied by Sites.
+
 Keep environment files, credentials, database contents, and personal uploads out of Git. Existing migration files are immutable; generate a new migration for schema changes.
 
 ## Access
